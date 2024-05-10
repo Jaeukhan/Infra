@@ -46,7 +46,7 @@ data:
     - name: default
       protocol: layer2
       addresses:
-      - 12.xxx.xxx.161-12.xxx.xxx.162
+      - 10.10.130.161-10.10.130.162
 
 
 kubectl apply -f config.yaml
@@ -59,7 +59,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 12.xxx.xxx.161-12.xxx.xxx.162
+  - 10.10.130.161-10.10.130.162
 
 
 apiVersion: metallb.io/v1beta1
@@ -89,7 +89,7 @@ kubectl -n ingress-nginx edit service/ingress-nginx-controller
 status:
   loadBalancer:
     ingress:
-    - ip: 12.xxx.xxx.170
+    - ip: 10.10.130.170
 
 ```
 
@@ -128,16 +128,16 @@ kubectl create ns harbor
 --- root 용 ----
 openssl genrsa -out ca.key 4096
 openssl req -x509 -new -nodes -sha512 -days 3650 \
- -subj "/C=KO/ST=Han/OU=Personal/CN=harbor.company.com" \
+ -subj "/C=KO/ST=Han/OU=Personal/CN=harbor.steco.com" \
  -key ca.key \
- -out harbor.company.ca.crt
+ -out harbor.steco.ca.crt
 --- domain용 ---
-openssl genrsa -out harbor.company.com.key 4096
+openssl genrsa -out harbor.steco.com.key 4096
 # csr 생성
 openssl req -sha512 -new \
- -subj "/C=KO/ST=Uk/L=Cheonan/O=company/OU=Personal/CN=harbor.company.com" \
-    -key harbor.company.com.key \
-    -out harbor.company.com.csr
+ -subj "/C=KO/ST=Uk/L=Cheonan/O=Steco/OU=Personal/CN=harbor.steco.com" \
+    -key harbor.steco.com.key \
+    -out harbor.steco.com.csr
 --- x509 v3 extension 파일생성
 cat > v3.ext <<EOF
 authorityKeyIdentifier=keyid,issuer
@@ -147,26 +147,26 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1=harbor.company.com
-DNS.2=harbor.company
+DNS.1=harbor.steco.com
+DNS.2=harbor.steco
 DNS.3=vminstance's host
 EOF
 --- v3.ext 파일로 certificate를 생성
 openssl x509 -req -sha512 -days 3650 \
     -extfile v3.ext \
-    -CA harbor.company.ca.crt -CAkey ca.key -CAcreateserial \
-    -in harbor.company.com.csr \
-    -out harbor.company.com.crt
+    -CA harbor.steco.ca.crt -CAkey ca.key -CAcreateserial \
+    -in harbor.steco.com.csr \
+    -out harbor.steco.com.crt
 --- # 도커가 쓸 수 있도록 cert로 변환
-openssl x509 -inform PEM -in harbor.company.com.crt -out harbor.company.com.cert
+openssl x509 -inform PEM -in harbor.steco.com.crt -out harbor.steco.com.cert
 ```
 
 - secret을 통한 tls 설정
 
 ```
 kubectl create secret tls harbor-tls -n harbor \
---cert=harbor.company.com.crt \
---key=harbor.company.com.key
+--cert=harbor.steco.com.crt \
+--key=harbor.steco.com.key
 ```
 
 ## 4. harbor 설치 및 확인
@@ -183,7 +183,7 @@ kubectl get pods -n harbor #pod확인
 vi /etc/hosts
 
 # 해당 IP는 ingress-controller IP
-12.xxx.xxx.170 harbor.localhost.com
+10.10.130.170 harbor.localhost.com
 ```
 
 - https://harbor.localhost.com에 접속하여 admin/harborAdminPassword로 접속
@@ -191,7 +191,7 @@ vi /etc/hosts
 ## 5. Docker 로그인
 
 ```
-docker login https://harbor.company.com
+docker login https://harbor.steco.com
 # 계정 이름 및 패스워드 입력
 ```
 
@@ -203,10 +203,10 @@ docker login https://harbor.company.com
 
 ```
 docker save 이미지명 > 파일명.tar
-scp test.tar root@12.xxx.xxx.160:/images/test.tar
+scp test.tar root@10.10.130.160:/images/test.tar
 sudo docker load < test.tar
-docker tag jenkins/jenkins:latest harbor.company.com/infra/jenkins:latest
-docker push harbor.company.com/infra/jenkins:latest
+docker tag jenkins/jenkins:latest harbor.steco.com/infra/jenkins:latest
+docker push harbor.steco.com/infra/jenkins:latest
 ```
 
 ![Alt text](./image/harbor_jenkins.png)
@@ -233,8 +233,9 @@ docker push harbor.company.com/infra/jenkins:latest
 kubectl create secret docker-registry secret-admin-harbor \
   --docker-username=admin \
   --docker-password=adm01sys! \
-  --docker-email=jaeuk730.han@company.co.kr \
-  --docker-server=https://harbor.company.com/
+  --docker-email=jaeuk730.han@steco.co.kr \
+  --docker-server=https://harbor.steco.com/ \
+  -n gitlab
 ```
 
 ## 9. containerd - insecure registry 옵션
@@ -242,13 +243,13 @@ kubectl create secret docker-registry secret-admin-harbor \
 - /etc/hosts 등록
 
 ```
-12.xxx.xxx.xxx harbor.company.com
+12.xxx.xxx.xxx harbor.steco.com
 ```
 
 - /etc/containerd/config.toml
 
 ```
 [plugins.cri.registry]
-[plugins.cri.registry.configs."harbor.company.com".tls]
+[plugins.cri.registry.configs."harbor.steco.com".tls]
   insecure_skip_verify = true
 ```

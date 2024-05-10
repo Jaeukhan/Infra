@@ -3,58 +3,95 @@
 ## 1. Argo 구성 및 config file 설정
 
 ```
-k create ns jenkins
+k create ns cicd
 
 cat << EOF > config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: docker-config
-  namespace: jenkins
+  namespace: ci
 data:
   daemon.json: |
-    {
-      "insecure-registries": ["harbor.company.com"]
+    {k get
+      "insecure-registries": ["harbor.steco.com"]
     }
+EOF
+k apply -f config.yaml
 ```
 
-## 2. pvc 설정
+## 2. pv, pvc 설정
+
+- pv
 
 ```
 cat << EOF > pv-jenkins.yaml
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-annotations:
-pv.kubernetes.io/provisioned-by: standard
-name: pv-jenkins
+  annotations:
+    pv.kubernetes.io/provisioned-by: standard
+  name: pv-jenkins
 spec:
-accessModes:
-- ReadWriteMany
+  accessModes:
+  - ReadWriteMany
   capacity:
-  storage: 50Gi
+    storage: 50Gi
   nfs:
-  path: /data/jenkins
-  server: 12.xxx.xxx.16
+    path: /data/jenkins
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-annotations:
-pv.kubernetes.io/provisioned-by: standard
-name: pv-jenkins-log
+  annotations:
+    pv.kubernetes.io/provisioned-by: standard
+  name: pv-jenkins-log
 spec:
-accessModes:
-- ReadWriteMany
+  accessModes:
+  - ReadWriteMany
   capacity:
-  storage: 1Gi
+    storage: 1Gi
   nfs:
-  path: /data/jenkins
-  server: 12.xxx.xxx.16
+    path: /data/jenkins
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
+EOF
+```
+
+- pvc
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: jenkins
+  name: jenkins-pvc
+  namespace: cicd
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: jenkins
+  name: jenkins-log-pvc
+  namespace: cicd
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
 ```
 
 ## 3. svc 및 deploy 설정
@@ -66,7 +103,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: jenkins-service
-  namespace: jenkins
+  namespace: cicd
   labels:
     app: jenkins
 spec:
@@ -87,7 +124,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: jenkins-service-jnlp
-  namespace: jenkins
+  namespace: cicd
   labels:
     app: jenkins
 spec:
@@ -108,7 +145,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jenkins-deployment
-  namespace: jenkins
+  namespace: cicd
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -123,7 +160,7 @@ spec:
         app: jenkins
     spec:
       containers:
-      - image: harbor.company.com/infra/jenkins:lts
+      - image: harbor.steco.com/cicd/jenkins:latest
         imagePullPolicy: IfNotPresent
         name: jenkins
         ports:
@@ -143,7 +180,7 @@ spec:
           name: shared
         - mountPath: /var/logs
           name: jenkins-log
-      - image: docker:dind
+      - image: harbor.steco.com/cicd/docker:dind
         imagePullPolicy: IfNotPresent
         name: docker
         securityContext:
@@ -178,4 +215,13 @@ spec:
 ```
 
 - 폐쇄망 환경에서 install 방법
+
   - 외부망 통신이 가능한 환경에서 Jenkins와 plugin 설치 -> /var/jenkins_home/plugins의 plugin 추출 -> 폐쇄망 환경 jenkins directory에 mount
+
+- 초기 Administrator passowrd
+
+```
+kubectl exec -n cicd pod/jenkins-deployment-6cb5d49979-spdc7 -- cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+-

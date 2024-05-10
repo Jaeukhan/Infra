@@ -7,7 +7,7 @@ metadata:
     k8s-app: logstash
 data:
   logstash.yml: |
-    http.host: "127.0.0.0"
+    http.host: "0.0.0.0"
     path.config: /usr/share/logstash/pipeline
   logstash.conf: |
     input{
@@ -99,22 +99,22 @@ data:
     output{
       if "fwlog" in [tags]{
         elasticsearch{
-          hosts => "https://12.xxx.xxx.160:p"
+          hosts => "https://10.111.109.241:9200"
           ssl_certificate_verification => false
-          user => "user"
-          password => "password"
+          user => "elastic"
+          password => "password@@
           ilm_enabled => true
-          ilm_rollover_alias => "company_fw"
+          ilm_rollover_alias => "steco_fw"
           ilm_pattern => "000001"
           ilm_policy => "auto_delete"
         } 
       } 
       else { 
         elasticsearch{ 
-          hosts => "https://12.xxx.xxx.160:p" 
+          hosts => "https://10.111.109.241:9200" 
           ssl_certificate_verification => false 
-          user => "user" 
-          password => "password"
+          user => "elastic" 
+          password => "password@@
           ilm_enabled => true 
           ilm_rollover_alias => "ips_epp" 
           ilm_pattern => "000001" 

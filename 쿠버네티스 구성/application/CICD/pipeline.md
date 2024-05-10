@@ -1,6 +1,21 @@
 # 1. 파이프라인 구성
 
-## 1. Jenkins를 통한 CI 파이프라인
+## 1. Jenkins CI구성
+
+### 1. Jenkins credentials과 Build 설정
+
+1. gitlab 토큰 생성
+   - user settings -> Access Tokens
+   - seclect scopes : api, read_api, read_repository, read_user
+2. Jenkins credentials 설정
+   - gitlab api token
+   - user & password
+3. Jenkins 설정
+
+   - Build Triggers설정:
+     general - build triggers(push events, opened merege request events)
+
+### 2. Jenkins 파이프라인
 
 ```
 pipeline {
@@ -9,15 +24,14 @@ pipeline {
         timeout(time: 1, unit: 'HOURS')
     }
     environment {
-        SOURCECODE_JENKINS_CREDENTIAL_ID = credentials('jaeuk')
-        SOURCE_CODE_URL = 'https://gitlab.company.com/infra/test.git'
-        RELEASE_BRANCH = 'release-client'
+        SOURCE_CODE_URL = 'http://10.109.226.178:8181/jaeuk730/oams.git'
+        RELEASE_BRANCH = 'main'
 		HARBOR_ID = credentials('harborId')
         HARBOR_PW = credentials('harborPassword')
     }
     stages {
-		 stage('Git Config Setting') {
-            steps {
+		stage('Git Config Setting') {
+           steps {
                 sh 'git config --global http.sslVerify false'
             }
         }
@@ -26,7 +40,7 @@ pipeline {
             steps {
                 git url: "$SOURCE_CODE_URL",
                     branch: "$RELEASE_BRANCH",
-                    credentialsId: "$SOURCECODE_JENKINS_CREDENTIAL_ID"
+                    credentialsId: "gitlab-jaeuk"
                 sh "ls -al"
             }
         }
@@ -39,32 +53,26 @@ pipeline {
                     ./gradlew clean bootjar
                     mv build/libs/*.jar app.jar
 					ls -al
-					''''
+					'''
                 }
-            }
         }
+
 
         stage('Build Image') {
             steps {
                 sh '''
-                    docker build -t harbor.company.com/infra/test:"${VERSION}" .
-                    docker login harbor.company.com -u $HARBOR_ID -p $HARBOR_PW
-                    docker push harbor.company.com/infra/test:"${VERSION}"
+                    docker build -t  harbor.steco.com/infra/test:latset ./
+                    docker login harbor.steco.com -u $HARBOR_ID -p $HARBOR_PW
+                    docker push harbor.steco.com/infra/test:"${VERSION}"
                 '''
             }
         }
-         stage('Invoke Argo Pipeline') {
-            steps {
-                build job: 'argo-deploy', parameters: [
-                    string(name: 'VERSION', value: "${params.VERSION}")
-                    ]
-            }
-        }
+   }
 }
 ```
 
-- Docker Socker 설정
-  - unix:///var/run/docker.sock
+- Docker Socket 설정
+  - unix:///var/run/containerd.sock
 
 ## 2. Argo를통한 CD
 
@@ -82,14 +90,14 @@ pipeline {
                 sh '''
                 git config --global http.sslVerify false
                 git config --global user.name "k23981070"
-                git config --global user.email "jaeuk730@company.com"
+                git config --global user.email "jaeuk730@steco.com"
                 git config --global credential.helper store
                 '''
             }
         }
         stage('Argo Git Clone') {
             steps {
-                git branch: 'main', credentialsId: 'gitlab-id', url: 'https://gitlab.company.com/root/board-deploy.git'
+                git branch: 'main', credentialsId: 'gitlab-id', url: 'https://gitlab.steco.com/root/board-deploy.git'
                 sh '''
                     rm -rf board-app-deployment.yaml
                     sed "s/VERSIONTAG/"${VERSION}"/g" "board-app-deployment-template.yaml" > board-app-deployment.yaml
@@ -135,7 +143,7 @@ spec:
         app: board
     spec:
       containers:
-      - image: harbor.company.com/infra/test:v0.0.1
+      - image: harbor.steco.com/infra/test:v0.0.1
         imagePullPolicy: IfNotPresent
         name: board
         ports:

@@ -93,6 +93,7 @@ EOF
 
 ## 2. Kube dashboard 구성
 
+- 참조 사이트 : https://github.com/kubernetes/dashboard/blob/master/docs/user/access-control/creating-sample-user.md
 - 배포
 
 ```
@@ -127,6 +128,8 @@ EOF
 
 # 앞서 생성한 계정으로 토큰을 발급한다.
 kubectl -n kubernetes-dashboard create token admin-user
+# 등록한 계정 토큰 확인
+kubectl get secret admin-user -n kubernetes-dashboard -o jsonpath={".data.token"} | base64 -d
 ```
 
 - NodePort 서비스로 변경
@@ -141,7 +144,7 @@ kubectl edit svc kubernetes-dashboard -n kubernetes-dashboard
 
 ```
 docker save 이미지명 > 파일명.tar
-scp test.tar root@12.xxx.xxx.160:/images/test.tar
+scp test.tar root@10.10.130.160:/images/test.tar
 sudo docker load < test.tar
-docker push harbor.company.com/<project_name>/<image_name>:<TAG>
+docker push harbor.steco.com/<project_name>/<image_name>:<TAG>
 ```

@@ -49,7 +49,7 @@ spec:
     storage: 500Gi
   nfs:
     path: /data/elastic
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   #storageClassName: nfs-standard
   volumeMode: Filesystem
@@ -60,6 +60,7 @@ spec:
 ```
 kubectl create ns logging
 helm install elasticsearch elastic/elasticsearch -n logging -f elasticsearch-values.yaml
+# helm install elasticsearch -n logging oci://harbor.steco.com/helm/elasticsearch --ca-file harbor.steco.com.crt
 helm install kibana elastic/kibana -n logging -f kibana-values.yaml
 ```
 
@@ -126,7 +127,7 @@ spec:
     storage: 1Gi
   nfs:
     path: /data/logstash
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   #storageClassName: nfs-standard
   volumeMode: Filesystem

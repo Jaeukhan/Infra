@@ -31,10 +31,10 @@ ingress:
     kubernetes.io/ingress.class: nginx
     kubernetes.io/tls-acme: "true"
   hosts:
-    - name: chartrepo.company.com
+    - name: chartrepo.steco.com
       path: /
       tls: false
-    - name: chartrepo.company.com
+    - name: chartrepo.steco.com
       path: /
       tls: true
       tlsSecret: chartrepo-tls
@@ -49,17 +49,17 @@ ingress:
 --- root 용 ----
 openssl genrsa -out tls.key 4096
 openssl req -x509 -new -nodes -sha512 -days 3650 \
- -subj "/C=KO/ST=Han/OU=Personal/CN=chartrepo.company.com" \
+ -subj "/C=KO/ST=Han/OU=Personal/CN=chartrepo.steco.com" \
  -key tls.key \
  -out tls.crt
 
  --- domain용 ---
-openssl genrsa -out chartrepo.company.com.key 4096
+openssl genrsa -out chartrepo.steco.com.key 4096
 # csr 생성
 openssl req -sha512 -new \
- -subj "/C=KO/ST=Uk/L=Cheonan/O=company/OU=Personal/CN=chartrepo.company.com" \
-    -key chartrepo.company.com.key \
-    -out chartrepo.company.com.csr
+ -subj "/C=KO/ST=Uk/L=Cheonan/O=Steco/OU=Personal/CN=chartrepo.steco.com" \
+    -key chartrepo.steco.com.key \
+    -out chartrepo.steco.com.csr
 --- x509 v3 extension 파일생성
 cat > v3.ext <<EOF
 authorityKeyIdentifier=keyid,issuer
@@ -69,19 +69,19 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1=chartrepo.company.com
-DNS.2=chartrepo.company
+DNS.1=chartrepo.steco.com
+DNS.2=chartrepo.steco
 EOF
 --- v3.ext 파일로 certificate를 생성
 openssl x509 -req -sha512 -days 3650 \
     -extfile v3.ext \
     -CA tls.crt -CAkey tls.key -CAcreateserial \
-    -in chartrepo.company.com.csr \
-    -out chartrepo.company.com.crt
+    -in chartrepo.steco.com.csr \
+    -out chartrepo.steco.com.crt
 
 kubectl create secret tls tls-secret -n helm-repo \
---key=chartrepo.company.com.key \
---cert=chartrepo.company.com.crt
+--key=chartrepo.steco.com.key \
+--cert=chartrepo.steco.com.crt
 ```
 
 ## 3. 설치 및 확인
@@ -91,15 +91,15 @@ kubectl create secret tls tls-secret -n helm-repo \
 
 ----
  /etc/hosts(C:\Windows\System32\drivers\etc\hosts) 등록
- 12.xxx.xxx.xx chartrepo.company.com
+ 12.xxx.xxx.xx chartrepo.steco.com
 ---
-chartrepo.company.com 접속 후 설정한 BASIC ID, PASSWORD 입력후 NGINX기본화면 뜨면 완료
+chartrepo.steco.com 접속 후 설정한 BASIC ID, PASSWORD 입력후 NGINX기본화면 뜨면 완료
 ```
 
 ## 4. chart repository 추가
 
 ```
-helm repo add chartrepo https://chartrepo.company.com --ca-file ~/k8s/helm-repo/cert/chartrepo.company.com.crt --username sysadm --password adm01sys!
+helm repo add chartrepo https://chartrepo.steco.com --ca-file ~/k8s/helm-repo/cert/chartrepo.steco.com.crt --username sysadm --password adm01sys!
 
 helm repo list
 ```
@@ -108,10 +108,11 @@ helm repo list
 
 ```
 helm package harbor
-helm push harbor-0.1.0.tgz chartrepo --ca-file ~/chartrepo.company.com.crt -f
+helm push gitlab-7.11.0.tgz oci://harbor.steco.com/infra --ca-file harbor.steco.com.crt
 helm repo update
 helm search harbor
 
 -- 설치
 helm install chartrepo/harbor --name harbor -n harbor
+helm install steco -n gitlab oci://harbor.steco.com/helm/elasticsearch --ca-file harbor.steco.com.crt
 ```

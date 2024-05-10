@@ -30,6 +30,8 @@ metadata:
   annotations:
     pv.kubernetes.io/provisioned-by: standard
   name: pv-01-gitlab
+  labels:
+    app: gitlab
 spec:
   accessModes:
   - ReadWriteOnce
@@ -37,7 +39,7 @@ spec:
     storage: 50Gi
   nfs:
     path: /data/gitlab
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 ---
@@ -47,6 +49,8 @@ metadata:
   annotations:
     pv.kubernetes.io/provisioned-by: standard
   name: pv-02-gitlab
+  labels:
+    app: gitlab
 spec:
   accessModes:
   - ReadWriteOnce
@@ -54,7 +58,7 @@ spec:
     storage: 50Gi
   nfs:
     path: /data/gitlab
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 ---
@@ -64,6 +68,8 @@ metadata:
   annotations:
     pv.kubernetes.io/provisioned-by: standard
   name: pv-03-gitlab
+  labels:
+    app: gitlab
 spec:
   accessModes:
   - ReadWriteOnce
@@ -71,7 +77,7 @@ spec:
     storage: 50Gi
   nfs:
     path: /data/gitlab
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 ---
@@ -81,6 +87,8 @@ metadata:
   annotations:
     pv.kubernetes.io/provisioned-by: standard
   name: pv-04-gitlab
+  labels:
+    app: gitlab
 spec:
   accessModes:
   - ReadWriteOnce
@@ -88,7 +96,7 @@ spec:
     storage: 50Gi
   nfs:
     path: /data/gitlab
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 ---
@@ -98,6 +106,8 @@ metadata:
   annotations:
     pv.kubernetes.io/provisioned-by: standard
   name: pv-05-gitlab
+  labels:
+    app: gitlab
 spec:
   accessModes:
   - ReadWriteOnce
@@ -105,7 +115,7 @@ spec:
     storage: 50Gi
   nfs:
     path: /data/gitlab
-    server: 12.xxx.xxx.16
+    server: 10.10.123.16
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
 
@@ -119,14 +129,14 @@ kubectl apply -f pv-gitlab.yaml
 --- root 용 ----
 openssl genrsa -out ca.key 4096
 openssl req -x509 -new -nodes -sha512 -days 3650 \
- -subj "/C=KO/ST=Han/OU=Personal/CN=gitlab.company.com" \
+ -subj "/C=KO/ST=Han/OU=Personal/CN=gitlab.steco.com" \
  -key ca.key \
- -out gitlab.company.ca.crt
+ -out gitlab.steco.ca.crt
 --- domain용 ---
 openssl genrsa -out tls.key 4096
 # csr 생성
 openssl req -sha512 -new \
- -subj "/C=KO/ST=Uk/L=Cheonan/O=company/OU=Personal/CN=gitlab.company.com" \
+ -subj "/C=KO/ST=Uk/L=Cheonan/O=Steco/OU=Personal/CN=gitlab.steco.com" \
     -key tls.key \
     -out tls.csr
 --- x509 v3 extension 파일생성
@@ -138,13 +148,13 @@ extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1=gitlab.company.com
-DNS.2=gitlab.company
+DNS.1=gitlab.steco.com
+DNS.2=gitlab.steco
 EOF
 --- v3.ext 파일로 certificate를 생성
 openssl x509 -req -sha512 -days 3650 \
     -extfile v3.ext \
-    -CA gitlab.company.ca.crt -CAkey ca.key -CAcreateserial \
+    -CA gitlab.steco.ca.crt -CAkey ca.key -CAcreateserial \
     -in tls.csr \
     -out tls.crt
 ```
@@ -185,4 +195,6 @@ helm upgrade gitlab gitlab/gitlab -n gitlab -f gitlab-values.yaml
 ```
 # id: root
 kubectl get secret -n gitlab gitlab-gitlab-initial-root-password -o jsonpath="{.data.password}" | base64 -d ; echo
+
+kubectl get secret -n gitlab steco-gitlab-initial-root-password -o jsonpath="{.data.password}" | base64 -d ; echo
 ```

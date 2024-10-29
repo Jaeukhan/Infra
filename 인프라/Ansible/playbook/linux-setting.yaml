@@ -1,0 +1,153 @@
+- hosts: linux
+  tasks:
+    - name: Create /etc/hosts.allow file
+      lineinfile:
+        path: /etc/hosts.allow
+        line: 'sshd: {IP_ADDRESS}' #IP_ADDRESS ex) 10.100.100.100
+
+    - name: Create /etc/hosts.deny file
+      lineinfile:
+        path: /etc/hosts.deny
+        line: 'ALL: ALL'
+        create: yes
+
+    - name: Update /etc/security/pwquality.conf file
+      lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^lcredit', line: 'lcredit = 1' }
+        - { regexp: '^dcredit', line: 'dcredit = 1' }
+        - { regexp: '^ocredit', line: 'ocredit = 1' }
+        - { regexp: '^minlen', line: 'minlen = 8' }
+
+    - name: Update /etc/login.defs file
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^PASS_MIN_LEN', line: 'PASS_MIN_LEN 8' }
+        - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS 90' }
+        - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS 7' }
+        - { regexp: '^umask', line: 'umask 022' }
+
+    - name: Set file permissions
+      file:
+        path: "{{ item.path }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: '/etc/passwd', mode: '644' }
+        - { path: '/etc/group', mode: '644' }
+        - { path: '/etc/hosts', mode: '644' }
+        - { path: '/etc/services', mode: '644' }
+        - { path: '/etc/xinetd.conf', mode: '644' }
+        - { path: '/etc/exports', mode: '644' }
+        - { path: '/etc/pam.d/system-auth', mode: '644' }
+        - { path: '/var/log/messages', mode: '644' }
+        - { path: '/var/log/wtmp', mode: '600' }
+        - { path: '/var/log/btmp', mode: '600' }
+        - { path: '/var/log/secure', mode: '600' }
+        - { path: '/etc/shadow', mode: '400' }
+        - { path: '/usr/bin/last', mode: '700' }
+        - { path: '/usr/sbin/ifconfig', mode: '700' }
+        - { path: '/etc/profile', mode: '755' }
+
+    - name: Set PermitRootLogin to no in sshd_config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      become: yes
+
+    - name: Add Banner /etc/issue line to sshd_config
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Banner'
+        line: 'Banner /etc/issue'
+        state: present
+      become: yes
+
+    - name: Create /etc/issue file
+      copy:
+        content: |
+          *==========================================================================*
+          * 경고 : 본 시스템은 인가된 사용자외에는 사용할 수 없습니다. *
+          * 불법적인 접근시 관련 법규에 의해 처벌될 수 있습니다. *
+          * 문의사항 : 02-2345-6555 시스템 관리자 : 한 재 욱 *
+          *==========================================================================*
+        dest: /etc/issue
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+
+    - name: Add TMOUT=1800 to /etc/profile
+      lineinfile:
+        path: /etc/profile
+        regexp: '^export TMOUT='
+        line: 'export TMOUT=1800'
+        state: present
+      become: yes
+
+    - name: Source /etc/profile
+      command: source /etc/profile
+      become: yes
+
+    - name: Delete adm account
+      user:
+        name: adm
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete lp account
+      user:
+        name: lp
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete sync account
+      user:
+        name: sync
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete shutdown account
+      user:
+        name: shutdown
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete halt account
+      user:
+        name: halt
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete news account
+      user:
+        name: news
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete operator account
+      user:
+        name: operator
+        state: absent
+        remove: yes
+      become: yes
+
+    - name: Delete games account
+      user:
+        name: games
+        state: absent
+        remove: yes
+      become: yes

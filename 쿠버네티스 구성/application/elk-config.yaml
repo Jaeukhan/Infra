@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-configmap
+  labels:
+    task: logging
+    k8s-app: logstash
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+  logstash.conf: |
+    input{
+      udp{
+        tags => "ipslog"
+        port => 9004
+        host => "0.0.0.0"
+        codec => plain{charset => "EUC-KR"}
+      }
+      udp{
+        tags => "epplog"
+        port => 9007
+        host => "0.0.0.0"
+        codec => plain{charset => "UTF-8"}
+      }
+      udp{
+        tags => "fwlog"
+        port => 9009
+        host => "0.0.0.0"
+        codec => plain{charset => "UTF-8"}
+      }
+    }
+    filter{
+      if "ipslog" in [tags]{
+        grok{
+          match => {
+            "message" => "\d\`\d\`%{NUMBER:log_type}"
+          }
+        }
+        grok{
+          match=>{
+            "message" => "%{IP:src_ip}\`%{NUMBER:src_port}\`%{IP:dst_ip}\`%{NUMBER:dst_port}" 
+          } 
+        } 
+        if "2" in [log_type]{
+          grok{
+            match => { "message" => "\:[a-zA-Z0-9]{2}\`\d+\`\`(?<ips_rule>\S+)\`\`eth" }
+          }
+        }
+      }
+      else if "epplog" in [tags]{
+        grok{ 
+          match => { 
+            "message" => "ip\=%{IP:inject_ip}" 
+          } 
+        } 
+        grok{ 
+          match => { 
+            "message" => "\bname\=(?<inject_rule>\S+)\b" 
+          } 
+        } 
+        grok{ 
+          match => { 
+            "message" => "computer\_name\=(?<inject_name>\S+)" 
+          } 
+        }
+      }
+      else if "fwlog" in [tags]{ 
+        grok{ 
+          match => { 
+            "message" => "\[(?<fw.action>\S+)\]" 
+          } 
+        } 
+        if "fw4_deny" in [fw.action]{
+          grok{
+            match => {
+          "message" => "main\-%{WORD:fw.device}\,%{NUMBER:fw.id}\,%{DATA:fw.nat}\,%{IP:fw.src_ip}\,\,%{DATA:fw.src_port}\,%{IP:fw.dst_ip}\,%{NUMBER:fw.dst_port}\,%{WORD:fw.protcol}\,%{WORD:fw.zone}\,%{WORD:fw.interface}\,%{NUMBER:fw.packet}\,%{NUMBER:fw.bytes}\, \,%{DATA:fw.flag}\,"
+            }
+          }
+        }
+        else if "fw4_allow" in [fw.action]{
+          grok{
+            match =>{
+              "message" => "main\-%{WORD:fw.device}\,%{NUMBER:fw.id}\,%{NOTSPACE:fw.nat}\,%{IP:fw.src_ip}\,\,%{NUMBER:fw.src_port}\,%{IP:fw.dst_ip}\,%{NUMBER:fw.dst_port}\,%{WORD:fw.protcol}\,%{WORD:fw.zone}\,%{WORD:fw.interface}\,%{NUMBER:fw.send_packet}\,%{NUMBER:fw.recv_packet}\,%{NUMBER:fw.send_bytes}\,%{NUMBER:fw.recv_bytes}\, \,%{DATA:fw.flag}\,"
+            }
+          }
+        }
+      }
+      mutate{
+        remove_field => "message"
+        convert => ["fw.send_packet", "integer"]
+        convert => ["fw.send_bytes", "integer"]
+        convert => ["fw.packet", "integer"]
+        convert => ["fw.bytes", "integer"]
+        convert => ["fw.recv_packet", "integer"]
+        convert => ["fw.recv_bytes", "integer"]
+      }
+    }
+    output{
+      if "fwlog" in [tags]{
+        elasticsearch{
+          hosts => "https://10.111.109.241:9200"
+          ssl_certificate_verification => false
+          user => "elastic"
+          password => "password@@
+          ilm_enabled => true
+          ilm_rollover_alias => "steco_fw"
+          ilm_pattern => "000001"
+          ilm_policy => "auto_delete"
+        } 
+      } 
+      else { 
+        elasticsearch{ 
+          hosts => "https://10.111.109.241:9200" 
+          ssl_certificate_verification => false 
+          user => "elastic" 
+          password => "password@@
+          ilm_enabled => true 
+          ilm_rollover_alias => "ips_epp" 
+          ilm_pattern => "000001" 
+          ilm_policy => "auto_delete" 
+        } 
+      } 
+    }

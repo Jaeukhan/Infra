@@ -1,0 +1,185 @@
+- hosts: node
+  become: yes
+  tasks:
+    - name: Turn off swap memory
+      command: swapoff -a
+
+    - name: Disable swap in /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '^\s*.*\s+swap\s+.*$'
+        state: absent
+
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+    - name: Stop and disable firewalld
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+
+    - name: Update dnf.conf to disable SSL verification
+      lineinfile:
+        path: /etc/dnf/dnf.conf
+        regexp: '^sslverify='
+        line: 'sslverify=false'
+
+    - name: Install yum-utils package
+      yum:
+        name: yum-utils
+        state: present
+
+    - name: Add Docker repository
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker packages
+      yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Configure containerd runtime options
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*SystemdCgroup\s*=\s*.*$'
+        line: 'SystemdCgroup = true'
+        create: yes
+        backup: yes
+
+    - name: Enable containerd plugin settings
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^#?disabled_plugins ='
+        line: '#disabled_plugins = ["cri"]'
+
+    - name: Restart and enable containerd service
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+---
+- name: Setup Kubernetes Node
+  hosts: node
+  become: yes
+  tasks:
+    - name: Install showmount
+      yum:
+        name: nfs-utils
+        state: present
+
+    - name: Verify NFS mount points
+      command: showmount -e 192.168.209.101
+      register: nfs_export
+      ignore_errors: yes
+
+    - name: Create NFS mount directory
+      file:
+        path: /data
+        state: directory
+
+    - name: Mount NFS directory
+      mount:
+        src: 192.168.209.101:/home/data
+        path: /data
+        fstype: nfs
+        state: mounted
+
+    - name: Load br_netfilter module
+      shell: |
+        modprobe br_netfilter
+        echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+    - name: Configure modules to load at boot
+      copy:
+        dest: /etc/modules-load.d/containerd.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Load overlay and br_netfilter modules
+      shell: |
+        modprobe overlay
+        modprobe br_netfilter
+
+    - name: Configure sysctl for Kubernetes
+      copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+
+    - name: Apply sysctl settings
+      command: sysctl --system
+
+    - name: Update /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ item }}"
+        state: present
+      loop:
+        - "192.168.209.101 master"
+        - "192.168.209.102 node1"
+
+    - name: Configure Kubernetes repo
+      copy:
+        dest: /etc/yum.repos.d/kubernetes.repo
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=0
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+          exclude=kubelet kubeadm kubectl
+
+    - name: Install Kubernetes packages
+      yum:
+        name:
+          - kubelet-1.29.9
+          - kubeadm-1.29.9
+          - kubectl-1.29.9
+        state: present
+        disable_excludes: kubernetes
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+
+    - name: Start and enable kubelet
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+
+    - name: Configure additional sysctl settings for Kubernetes
+      copy:
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+
+    - name: Apply additional sysctl settings
+      command: sysctl --system
+
+    - name: Join Kubernetes cluster
+      shell: |
+        kubeadm join 192.168.209.101:6443 --v=5 --node-name=node1 \
+        --token kbp7sj.yrueqae4wg9uzv0w \
+        --discovery-token-ca-cert-hash sha256:baed5bbc7e41dcfb409d6e23b2d42747f724798ecf63b1ae6fc6802c34cbd256
+      args:
+        warn: false

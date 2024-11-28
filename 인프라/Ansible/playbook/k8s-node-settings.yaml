@@ -1,185 +1,93 @@
-- hosts: node
-  become: yes
-  tasks:
-    - name: Turn off swap memory
-      command: swapoff -a
-
-    - name: Disable swap in /etc/fstab
-      lineinfile:
-        path: /etc/fstab
-        regexp: '^\s*.*\s+swap\s+.*$'
-        state: absent
-
-    - name: Disable SELinux
-      selinux:
-        state: disabled
-
-    - name: Stop and disable firewalld
-      systemd:
-        name: firewalld
-        state: stopped
-        enabled: no
-
-    - name: Update dnf.conf to disable SSL verification
-      lineinfile:
-        path: /etc/dnf/dnf.conf
-        regexp: '^sslverify='
-        line: 'sslverify=false'
-
-    - name: Install yum-utils package
-      yum:
-        name: yum-utils
-        state: present
-
-    - name: Add Docker repository
-      get_url:
-        url: https://download.docker.com/linux/centos/docker-ce.repo
-        dest: /etc/yum.repos.d/docker-ce.repo
-
-    - name: Install Docker packages
-      yum:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-        state: present
-
-    - name: Start and enable Docker service
-      systemd:
-        name: docker
-        state: started
-        enabled: yes
-
-    - name: Configure containerd runtime options
-      lineinfile:
-        path: /etc/containerd/config.toml
-        regexp: '^\s*SystemdCgroup\s*=\s*.*$'
-        line: 'SystemdCgroup = true'
-        create: yes
-        backup: yes
-
-    - name: Enable containerd plugin settings
-      lineinfile:
-        path: /etc/containerd/config.toml
-        regexp: '^#?disabled_plugins ='
-        line: '#disabled_plugins = ["cri"]'
-
-    - name: Restart and enable containerd service
-      systemd:
-        name: containerd
-        state: restarted
-        enabled: yes
 ---
-- name: Setup Kubernetes Node
+- name: Kubernetes Node Setup
   hosts: node
   become: yes
+
+  vars:
+    kube_repo_url: "https://pkgs.k8s.io/core:/stable:/v1.29/rpm/"
+    kube_repo_key: "https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key"
+    kube_version: "1.29.9"
+    kube_token: "jmkcx8.t63mxfd3t9iwlfed"
+    kube_ca_hash: "sha256:747136993e8e544eba5b00cdf7c577cff3663760110c5b397c995ababb8868a6"
+    kube_master_ip: "192.168.1.101"
+    kube_node_name: "node1"
+
   tasks:
-    - name: Install showmount
-      yum:
-        name: nfs-utils
-        state: present
+    - name: Load br_netfilter kernel module
+      command: modprobe br_netfilter
+      args:
+        warn: false
 
-    - name: Verify NFS mount points
-      command: showmount -e 192.168.209.101
-      register: nfs_export
-      ignore_errors: yes
+    - name: Enable bridge-nf-call-iptables
+      shell: echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
 
-    - name: Create NFS mount directory
-      file:
-        path: /data
-        state: directory
-
-    - name: Mount NFS directory
-      mount:
-        src: 192.168.209.101:/home/data
-        path: /data
-        fstype: nfs
-        state: mounted
-
-    - name: Load br_netfilter module
-      shell: |
-        modprobe br_netfilter
-        echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
-
-    - name: Configure modules to load at boot
+    - name: Ensure containerd.conf exists with correct content
       copy:
         dest: /etc/modules-load.d/containerd.conf
         content: |
           overlay
           br_netfilter
 
-    - name: Load overlay and br_netfilter modules
-      shell: |
-        modprobe overlay
-        modprobe br_netfilter
+    - name: Load overlay kernel module
+      command: modprobe overlay
+      args:
+        warn: false
 
-    - name: Configure sysctl for Kubernetes
-      copy:
-        dest: /etc/sysctl.d/99-kubernetes-cri.conf
-        content: |
-          net.bridge.bridge-nf-call-iptables = 1
-          net.ipv4.ip_forward = 1
-          net.bridge.bridge-nf-call-ip6tables = 1
+    - name: Reload br_netfilter module
+      command: modprobe br_netfilter
+      args:
+        warn: false
 
-    - name: Apply sysctl settings
-      command: sysctl --system
-
-    - name: Update /etc/hosts
-      lineinfile:
-        path: /etc/hosts
-        line: "{{ item }}"
-        state: present
-      loop:
-        - "192.168.209.101 master"
-        - "192.168.209.102 node1"
-
-    - name: Configure Kubernetes repo
+    - name: Configure Kubernetes yum repository
       copy:
         dest: /etc/yum.repos.d/kubernetes.repo
         content: |
           [kubernetes]
           name=Kubernetes
-          baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+          baseurl={{ kube_repo_url }}
           enabled=1
           gpgcheck=1
           repo_gpgcheck=0
-          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+          gpgkey={{ kube_repo_key }}
           exclude=kubelet kubeadm kubectl
 
-    - name: Install Kubernetes packages
+    - name: Install Kubernetes components
       yum:
         name:
-          - kubelet-1.29.9
-          - kubeadm-1.29.9
-          - kubectl-1.29.9
+          - kubelet-{{ kube_version }}
+          - kubeadm-{{ kube_version }}
+          - kubectl-{{ kube_version }}
         state: present
         disable_excludes: kubernetes
 
-    - name: Restart containerd
+    - name: Restart containerd service
       systemd:
         name: containerd
         state: restarted
 
-    - name: Start and enable kubelet
+    - name: Enable and start kubelet service
       systemd:
         name: kubelet
         state: started
-        enabled: yes
+        enabled: true
 
-    - name: Configure additional sysctl settings for Kubernetes
+    - name: Configure sysctl settings for Kubernetes
       copy:
         dest: /etc/sysctl.d/k8s.conf
         content: |
           net.bridge.bridge-nf-call-ip6tables = 1
           net.bridge.bridge-nf-call-iptables = 1
 
-    - name: Apply additional sysctl settings
+    - name: Apply sysctl settings
       command: sysctl --system
 
     - name: Join Kubernetes cluster
       shell: |
-        kubeadm join 192.168.209.101:6443 --v=5 --node-name=node1 \
-        --token kbp7sj.yrueqae4wg9uzv0w \
-        --discovery-token-ca-cert-hash sha256:baed5bbc7e41dcfb409d6e23b2d42747f724798ecf63b1ae6fc6802c34cbd256
-      args:
-        warn: false
+        kubeadm join {{ kube_master_ip }}:6443 --v=5 --node-name={{ kube_node_name }} \
+        --token {{ kube_token }} --discovery-token-ca-cert-hash {{ kube_ca_hash }}
+      register: join_output
+      ignore_errors: true
+
+    - name: Debug join output
+      debug:
+        var: join_output.stdout

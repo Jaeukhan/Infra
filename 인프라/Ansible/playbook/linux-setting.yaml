@@ -1,11 +1,26 @@
 - hosts: linux
   tasks:
-    - name: Create /etc/hosts.allow file
+      - name: Create /etc/hosts.allow file
+      file:
+        path: /etc/hosts.allow
+        state: touch
+        owner: root
+        group: root
+        mode: 0644
+    - name: Create /etc/hosts.deny file
+      file:
+        path: /etc/hosts.deny
+        state: touch
+        owner: root
+        group: root
+        mode: 0644
+        
+    - name: Update /etc/hosts.allow file
       lineinfile:
         path: /etc/hosts.allow
         line: 'sshd: {IP_ADDRESS}' #IP_ADDRESS ex) 10.100.100.100
 
-    - name: Create /etc/hosts.deny file
+    - name: Update /etc/hosts.deny file
       lineinfile:
         path: /etc/hosts.deny
         line: 'ALL: ALL'

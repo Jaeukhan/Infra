@@ -1,44 +1,49 @@
 ---
 - name: Kubernetes Node Setup
-  hosts: node
+  hosts: Node3
   become: yes
-
+  
   vars:
     kube_repo_url: "https://pkgs.k8s.io/core:/stable:/v1.29/rpm/"
     kube_repo_key: "https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key"
     kube_version: "1.29.9"
-    kube_token: "jmkcx8.t63mxfd3t9iwlfed"
-    kube_ca_hash: "sha256:747136993e8e544eba5b00cdf7c577cff3663760110c5b397c995ababb8868a6"
+    kube_token: "jmkcx8.12313213132131312"
+    kube_ca_hash: "sha256:123213123131232131"
     kube_master_ip: "192.168.1.101"
-    kube_node_name: "node1"
-
+    kube_node_name: "Node1"
+    cilium_version: "1.17.0"
+  
   tasks:
-    - name: Load br_netfilter kernel module
-      command: modprobe br_netfilter
-      args:
-        warn: false
+    - name: Load kernel modules for networking
+      modprobe:
+        name: br_netfilter
+        state: present
 
     - name: Enable bridge-nf-call-iptables
-      shell: echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+      copy:
+        dest: /etc/sysctl.d/k8s.conf
+        content: |
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.bridge.bridge-nf-call-iptables = 1
+      notify: Reload sysctl
 
-    - name: Ensure containerd.conf exists with correct content
+    - name: Load required kernel modules on boot
       copy:
         dest: /etc/modules-load.d/containerd.conf
         content: |
           overlay
           br_netfilter
 
-    - name: Load overlay kernel module
-      command: modprobe overlay
-      args:
-        warn: false
+    - name: Create sysctl configuration for Kubernetes
+      copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+      notify: Reload sysctl
 
-    - name: Reload br_netfilter module
-      command: modprobe br_netfilter
-      args:
-        warn: false
-
-    - name: Configure Kubernetes yum repository
+    - name: Add Kubernetes repository
       copy:
         dest: /etc/yum.repos.d/kubernetes.repo
         content: |
@@ -51,7 +56,7 @@
           gpgkey={{ kube_repo_key }}
           exclude=kubelet kubeadm kubectl
 
-    - name: Install Kubernetes components
+    - name: Install Kubernetes packages
       yum:
         name:
           - kubelet-{{ kube_version }}
@@ -60,34 +65,38 @@
         state: present
         disable_excludes: kubernetes
 
-    - name: Restart containerd service
+    - name: Restart and enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Restart containerd
       systemd:
         name: containerd
         state: restarted
 
-    - name: Enable and start kubelet service
-      systemd:
-        name: kubelet
-        state: started
-        enabled: true
-
-    - name: Configure sysctl settings for Kubernetes
-      copy:
-        dest: /etc/sysctl.d/k8s.conf
-        content: |
-          net.bridge.bridge-nf-call-ip6tables = 1
-          net.bridge.bridge-nf-call-iptables = 1
-
-    - name: Apply sysctl settings
-      command: sysctl --system
-
     - name: Join Kubernetes cluster
-      shell: |
-        kubeadm join {{ kube_master_ip }}:6443 --v=5 --node-name={{ kube_node_name }} \
-        --token {{ kube_token }} --discovery-token-ca-cert-hash {{ kube_ca_hash }}
-      register: join_output
-      ignore_errors: true
+      command: >
+        kubeadm join {{ kube_master_ip }}:6443 --v=5 --node-name={{ kube_node_name }} --token {{ kube_token  }}
+        --discovery-token-ca-cert-hash {{ kube_ca_hash }}
+      args:
+        creates: /etc/kubernetes/kubelet.conf  # 이미 조인된 경우 실행 안 함
 
-    - name: Debug join output
-      debug:
-        var: join_output.stdout
+    - name: Install Cilium CLI
+      shell: |
+        CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+        CLI_ARCH=amd64
+        if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+        curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+        sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+        sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+        rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+
+    - name: Install Cilium in Kubernetes
+      command: cilium install --version {{ cilium_version }}
+
+  handlers:
+    - name: Reload sysctl
+      command: sysctl --system

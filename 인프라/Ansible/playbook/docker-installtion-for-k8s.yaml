@@ -1,0 +1,82 @@
+- hosts: Node3
+  become: yes
+  tasks:
+    - name: Turn off swap memory
+      command: swapoff -a
+
+    - name: Disable swap in /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '^(?!#)(\s*.*\s+swap\s+.*)$'
+        line: '#\1'
+        backrefs: yes
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+
+    - name: Disable SELinux
+      lineinfile:
+        path: /etc/sysconfig/selinux
+        regexp: '^SELINUX=enforcing$'
+        line: 'SELINUX=disabled'
+        state: present
+
+
+    - name: Stop and disable firewalld
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+
+    - name: Update dnf.conf to disable SSL verification
+      lineinfile:
+        path: /etc/dnf/dnf.conf
+        regexp: '^sslverify='
+        line: 'sslverify=false'
+        
+    - name: Install yum-utils package
+      yum:
+        name: yum-utils
+        state: present
+
+    - name: Add Docker repository
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker packages
+      yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        disable_gpg_check: yes
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure /etc/containerd/config.toml contains the required configuration
+      ansible.builtin.blockinfile :
+        path: /etc/containerd/config.toml
+        marker: "# ANSIBLE MANAGED BLOCK"
+        block: |
+          [plugins." io.containerd.grpc.v1.cri ". containerd.runtimes.runc ]
+            [plugins." io.containerd.grpc.v1.cri ". containerd.runtimes.runc.options ]
+              SystemdCgroup = true
+
+    - name: Enable containerd plugin settings
+      lineinfile:
+        path: /etc/containerd/config.toml
+        regexp: '^#?disabled_plugins ='
+        line: '#disabled_plugins = ["cri"]'
+
+    - name: Restart and enable containerd service
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
